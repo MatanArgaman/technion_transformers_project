@@ -59,7 +59,7 @@ def load_experiment_data(experiment_folder):
     return result
 
 
-def load_all_experiments(results_folder, show_val=False):
+def load_all_experiments(results_folder, show_val=False, load_all=False):
     """
     Load experiment data from the ablation_results folder, filtering by folder name prefix.
 
@@ -77,15 +77,18 @@ def load_all_experiments(results_folder, show_val=False):
         raise FileNotFoundError(f"Results folder '{results_folder}' not found")
 
     # Determine the prefix to filter by
-    prefix = 'v_' if show_val else 't_'
-    print(f"Loading experiments with prefix: '{prefix}'")
+    if load_all:
+        print(f"Loading all experiments")
+    else:
+        prefix = 'v_' if show_val else 't_'
+        print(f"Loading experiments with prefix: '{prefix}'")
 
     # Iterate through all subdirectories (experiment folders)
     for experiment_dir in results_path.iterdir():
         if experiment_dir.is_dir():
             experiment_name = experiment_dir.name
             # Only load experiments that start with the specified prefix
-            if experiment_name.startswith(prefix):
+            if load_all or experiment_name.startswith(prefix):
                 try:
                     experiments[experiment_name] = load_experiment_data(experiment_dir)
                     print(f"Loaded experiment: {experiment_name}")
@@ -734,8 +737,7 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
         plt.show()
 
 
-def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_1.png", show_plot=True,
-                                     flip_sets=False):
+def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_1.png", show_plot=True):
     """
     Create a bar chart showing hits_at_1 values from v_eval.json and t_eval.json files for each experiment.
 
@@ -784,6 +786,9 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
             x_values.append(topic_name)
 
         experiment_names.append(experiment_name)
+        flip_sets = False
+        if experiment_name.startswith('t_'):
+            flip_sets = True
         v_eval_values.append(data.get('t_eval' if flip_sets else 'v_eval', None))
         t_eval_values.append(data.get('v_eval' if flip_sets else 't_eval', None))
 
@@ -794,20 +799,6 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     x = np.arange(len(experiment_names))
     width = 0.35
 
-    # Create bars for validation and test data
-    v_bars = plt.bar(x - width / 2, [val if val is not None else 0 for val in t_eval_values],
-                     width, label='Test', color='blue', alpha=0.7)
-    t_bars = plt.bar(x + width / 2, [val if val is not None else 0 for val in v_eval_values],
-                     width, label='Validation', color='red', alpha=0.7)
-
-    # Customize the plot
-    x_axis_label = 'Threshold' if has_threshold_data else 'Topic'
-    plt.xlabel(x_axis_label)
-    plt.ylabel('Hits@1 Score')
-    title_suffix = 'by Threshold' if has_threshold_data else 'by Topic'
-    plt.title(f'Evaluation Hits@1 Scores {title_suffix}')
-
-    # Set x-axis labels based on data type
     if has_threshold_data:
         # Sort by threshold values for better visualization
         sorted_indices = np.argsort([float(x) if isinstance(x, (int, float)) else 0 for x in x_values])
@@ -819,6 +810,21 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
         # Update x positions after sorting
         x = np.arange(len(experiment_names))
 
+    # Create bars for validation and test data
+    t_bars = plt.bar(x - width / 2, [val if val is not None else 0 for val in t_eval_values],
+                     width, label='Test', color='blue', alpha=0.7)
+    v_bars = plt.bar(x + width / 2, [val if val is not None else 0 for val in v_eval_values],
+                     width, label='Validation', color='red', alpha=0.7)
+
+    # Customize the plot
+    x_axis_label = 'Threshold' if has_threshold_data else 'Topic'
+    plt.xlabel(x_axis_label)
+    plt.ylabel('Hits@1 Score')
+    title_suffix = 'by Threshold' if has_threshold_data else 'by Topic'
+    plt.title(f'Evaluation Hits@1 Scores {title_suffix}')
+
+    # Set x-axis labels based on data type
+    if has_threshold_data:
         # Use threshold values as x-axis labels
         plt.xticks(x, [f'{val:.3f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
                    ha='right')
@@ -985,11 +991,12 @@ def main():
     parser.add_argument('--show_val',
                         action='store_true',
                         help='If set, load experiments starting with "v_" instead of "t_"')
+    parser.add_argument('--all',
+                        action='store_true',
+                        help='If set, load all experiments starting with "v_" or "t_"')
     parser.add_argument('--no-show',
                         action='store_true',
                         help='If set, disable showing graphs (they will still be saved)')
-    parser.add_argument('--flip-sets', action='store_true',
-                        help='use when running on topics results as as the val/test data roles were switched')
     args = parser.parse_args()
 
     print(f"Loading experiment data from: {args.experiments_path}")
@@ -1001,7 +1008,7 @@ def main():
     print(f"Visualizations will be saved to: {visualizations_dir}")
 
     # Load experiments based on the show_val flag
-    experiments = load_all_experiments(args.experiments_path, show_val=args.show_val)
+    experiments = load_all_experiments(args.experiments_path, show_val=args.show_val, load_all=args.all)
 
     if not experiments:
         print("No experiments found!")
@@ -1064,7 +1071,7 @@ def main():
 
     if 'evaluation_hits_at_1' in visualizations_to_run:
         create_evaluation_hits_at_1_plot(experiments, str(visualizations_dir / "evaluation_hits_at_1.png"),
-                                         show_plot=not args.no_show, flip_sets=args.flip_sets)
+                                         show_plot=not args.no_show)
 
     print("\nAnalysis complete!")
     print(f"All visualizations have been saved to: {visualizations_dir}")
