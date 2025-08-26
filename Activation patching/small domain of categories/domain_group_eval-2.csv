@@ -1,0 +1,15 @@
+label,patch,k,drop_domain,drop_other
+business,mean,1000,0.005,0.13
+business,zero,1000,0.006,0.133
+entertainment,mean,1000,0.046,0.085
+entertainment,zero,1000,0.039,0.078
+environment,mean,1000,0.003,0.058
+environment,zero,1000,0.004,0.081
+lifestyle,mean,1000,0.002,0.022
+lifestyle,zero,1000,0.001,0.028
+science,mean,1000,0.037,0.155
+science,zero,1000,0.041,0.179
+society,mean,1000,0.001,0.126
+society,zero,1000,0.002,0.147
+sports,mean,1000,0.012,0.156
+sports,zero,1000,0.015,0.183
