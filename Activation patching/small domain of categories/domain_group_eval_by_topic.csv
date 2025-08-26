@@ -1,0 +1,13 @@
+topic,patch,k,drop_topic,drop_other
+entertainment,mean,1000,0.039,0.101
+entertainment,zero,1000,0.037,0.098
+sports,mean,357,0.009,0.067
+sports,zero,357,0.012,0.069
+business,mean,39,0.002,0.043
+business,zero,39,0.003,0.044
+science,mean,399,0.027,0.085
+science,zero,399,0.027,0.088
+environment,mean,19,0.002,0.042
+environment,zero,19,0.002,0.052
+society,mean,213,0.001,0.068
+society,zero,213,0.001,0.073
