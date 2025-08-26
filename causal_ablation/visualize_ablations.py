@@ -544,19 +544,41 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
                 union = len(cannot_ablate_1.union(cannot_ablate_2))
                 similarity_matrix[i, j] = intersection / union if union > 0 else 0
 
-    # Create numbered labels for experiments (1, 2, 3, ...)
-    experiment_numbers = [str(i + 1) for i in range(len(experiment_names))]
+    # Check if experiments have threshold data
+    has_threshold_data = any('threshold' in experiments[name] for name in experiment_names)
+    
+    if has_threshold_data:
+        # Use threshold values for x-axis labels
+        x_labels = []
+        y_labels = []
+        for name in experiment_names:
+            threshold = experiments[name].get('threshold')
+            if threshold is not None and isinstance(threshold, (int, float)):
+                x_labels.append(f'{threshold:.3f}')
+                y_labels.append(f'{threshold:.3f}')
+            else:
+                # Fall back to experiment name if no threshold data
+                x_labels.append(name)
+                y_labels.append(name)
+        x_axis_label = 'Threshold'
+        y_axis_label = 'Threshold'
+    else:
+        # Create numbered labels for experiments (1, 2, 3, ...)
+        x_labels = [str(i + 1) for i in range(len(experiment_names))]
+        y_labels = [str(i + 1) for i in range(len(experiment_names))]
+        x_axis_label = 'Experiment Number'
+        y_axis_label = 'Experiment Number'
 
     plt.figure(figsize=(10, 8))
     sns.heatmap(similarity_matrix,
-                xticklabels=experiment_numbers,
-                yticklabels=experiment_numbers,
+                xticklabels=x_labels,
+                yticklabels=y_labels,
                 cmap='coolwarm',
                 cbar_kws={'label': 'Jaccard Similarity'})
 
     plt.title('Experiment Similarity Matrix\n(Based on cannot_ablate_neurons overlap)')
-    plt.xlabel('Experiment Number')
-    plt.ylabel('Experiment Number')
+    plt.xlabel(x_axis_label)
+    plt.ylabel(y_axis_label)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Experiment similarity matrix saved to: {save_path}")
