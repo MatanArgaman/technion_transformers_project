@@ -300,8 +300,16 @@ def create_layer_ablation_distribution(experiments, save_path="layer_ablation_di
 
     # Create bars for neuron counts (left y-axis)
     bars1 = ax1.bar(layers, ablated_counts, label='Ablated (Count)', alpha=0.7, color='skyblue')
-    bars2 = ax1.bar(layers, cannot_ablate_counts, bottom=ablated_counts, label='Cannot Ablate (Count)', alpha=0.7,
+    bars2 = ax1.bar(layers, cannot_ablate_counts, bottom=ablated_counts, label='Retained (Count)', alpha=0.7,
                     color='lightcoral')
+
+    # Annotate retained bars with absolute counts when retained >95%
+    for i, bar in enumerate(bars2):
+        if total_per_layer[i] > 0 and cannot_ablate_pct[i] > 95:
+            count = cannot_ablate_counts[i]
+            x_pos = bar.get_x() + bar.get_width() / 2
+            y_pos = bar.get_y() + bar.get_height() / 2
+            ax1.text(x_pos, y_pos, f'{count}', ha='center', va='center', fontsize=8, color='black', fontweight='bold')
 
     # Set up left y-axis for neuron counts
     ax1.set_xlabel('Layer')
@@ -405,8 +413,16 @@ def create_best_experiment_layer_distribution(experiments, save_path="best_exper
 
     # Create bars for neuron counts (left y-axis)
     bars1 = ax1.bar(layers, ablated_counts, label='Ablated (Count)', alpha=0.7, color='skyblue')
-    bars2 = ax1.bar(layers, cannot_ablate_counts, bottom=ablated_counts, label='Cannot Ablate (Count)', alpha=0.7,
+    bars2 = ax1.bar(layers, cannot_ablate_counts, bottom=ablated_counts, label='Retained (Count)', alpha=0.7,
                     color='lightcoral')
+
+    # Annotate retained bars with absolute counts when retained >95%
+    for i, bar in enumerate(bars2):
+        if total_per_layer[i] > 0 and cannot_ablate_pct[i] <= 5:
+            count = cannot_ablate_counts[i]
+            x_pos = bar.get_x() + bar.get_width() / 2
+            y_pos = bar.get_y() + bar.get_height() / 2
+            ax1.text(x_pos, y_pos, f'{count}', ha='center', va='center', fontsize=8, color='black', fontweight='bold')
 
     # Set up left y-axis for neuron counts
     ax1.set_xlabel('Layer')
@@ -554,8 +570,8 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
         for name in experiment_names:
             threshold = experiments[name].get('threshold')
             if threshold is not None and isinstance(threshold, (int, float)):
-                x_labels.append(f'{threshold:.3f}')
-                y_labels.append(f'{threshold:.3f}')
+                x_labels.append(f'{threshold:.4f}')
+                y_labels.append(f'{threshold:.4f}')
             else:
                 # Fall back to experiment name if no threshold data
                 x_labels.append(name)
@@ -613,7 +629,7 @@ def create_ablation_ratio_distribution(experiments, save_path="ablation_ratio_di
     plt.ylabel('Number of Experiments')
     plt.title('Distribution of Ablation Ratios')
     mean_ratio = float(np.mean(ablation_ratios))
-    plt.axvline(mean_ratio, color='red', linestyle='--', label=f'Mean: {mean_ratio:.3f}')
+    plt.axvline(mean_ratio, color='red', linestyle='--', label=f'Mean: {mean_ratio:.4f}')
     plt.legend()
 
     # Box plot
@@ -848,7 +864,7 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     # Set x-axis labels based on data type
     if has_threshold_data:
         # Use threshold values as x-axis labels
-        plt.xticks(x, [f'{val:.3f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
+        plt.xticks(x, [f'{val:.4f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
                    ha='right')
     else:
         # Use topic names from topic.json directly when available
@@ -860,10 +876,10 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     # Add value labels on bars
     for i, (v_val, t_val) in enumerate(zip(v_eval_values, t_eval_values)):
         if v_val is not None:
-            plt.text(i - width / 2, v_val + 0.01, f'{v_val:.3f}',
+            plt.text(i - width / 2, v_val + 0.01, f'{v_val:.4f}',
                      ha='center', va='bottom', fontsize=8)
         if t_val is not None:
-            plt.text(i + width / 2, t_val + 0.01, f'{t_val:.3f}',
+            plt.text(i + width / 2, t_val + 0.01, f'{t_val:.4f}',
                      ha='center', va='bottom', fontsize=8)
 
     # Add statistics
@@ -884,7 +900,7 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     else:
         t_avg = t_min = t_max = 0
 
-    stats_text = f'Validation - Avg: {v_avg:.3f}, Min: {v_min:.3f}, Max: {v_max:.3f}\nTest - Avg: {t_avg:.3f}, Min: {t_min:.3f}, Max: {t_max:.3f}\nTotal experiments: {len(experiment_names)}'
+    stats_text = f'Validation - Avg: {v_avg:.4f}, Min: {v_min:.4f}, Max: {v_max:.4f}\nTest - Avg: {t_avg:.4f}, Min: {t_min:.4f}, Max: {t_max:.4f}\nTotal experiments: {len(experiment_names)}'
     plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
@@ -894,6 +910,168 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     if show_plot:
         plt.show()
 
+
+def create_per_experiment_layer_distribution(experiments, save_dir, show_plot=True):
+    """
+    For each experiment, create a stacked bar chart per layer showing:
+    - Ablated neuron count (bottom)
+    - Retained neuron count (top)
+    If retained < 5% of total per layer, place the retained count on top of the bar.
+
+    Args:
+        experiments (dict): Mapping experiment_name -> data dict with 'ablated_neurons' and 'cannot_ablate_neurons'
+        save_dir (str or Path): Directory to save per-experiment figures
+        show_plot (bool): If True, show each plot after saving
+    """
+    print("\nCreating per-experiment layer distributions...")
+
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    for experiment_name, data in experiments.items():
+        # Aggregate counts per layer for this experiment
+        layer_stats = defaultdict(lambda: {'ablated': 0, 'retained': 0})
+        for layer, _ in data['ablated_neurons']:
+            layer_stats[layer]['ablated'] += 1
+        for layer, _ in data['cannot_ablate_neurons']:
+            layer_stats[layer]['retained'] += 1
+
+        if not layer_stats:
+            print(f"No neuron data for experiment {experiment_name}; skipping.")
+            continue
+
+        layers = sorted(layer_stats.keys())
+        ablated_counts = [layer_stats[layer]['ablated'] for layer in layers]
+        retained_counts = [layer_stats[layer]['retained'] for layer in layers]
+        totals = [ablated_counts[i] + retained_counts[i] for i in range(len(layers))]
+
+        plt.figure(figsize=(12, 6))
+        bars_abl = plt.bar(layers, ablated_counts, label='Ablated', color='skyblue', alpha=0.8)
+        bars_ret = plt.bar(layers, retained_counts, bottom=ablated_counts, label='Retained', color='lightcoral', alpha=0.8)
+
+        # Annotate retained counts when retained < 5% of total per layer
+        for i, bar in enumerate(bars_ret):
+            total = totals[i]
+            retained = retained_counts[i]
+            if total > 0 and (retained / total) < 0.05:
+                x_pos = bar.get_x() + bar.get_width() / 2
+                y_pos = bar.get_y() + bar.get_height() + 0.02 * max(totals)  # small offset above top
+                plt.text(x_pos, y_pos, f"{retained}", ha='center', va='bottom', fontsize=8, fontweight='bold', color='black')
+
+        plt.xlabel('Layer')
+        plt.ylabel('Neuron Count')
+        # Title uses threshold value if available, else experiment name
+        threshold_value = data.get('threshold')
+        if isinstance(threshold_value, (int, float)):
+            title_text = f'{threshold_value:.4f}'
+        else:
+            title_text = experiment_name
+        plt.title(f'Layer-wise Retained vs Ablated Neurons\nExperiment: {title_text}')
+        plt.legend(loc='upper right')
+        plt.tight_layout()
+
+        out_path = save_dir / f"per_experiment_layers_{experiment_name}.png"
+        plt.savefig(out_path, dpi=300, bbox_inches='tight')
+        print(f"Saved per-layer chart for {experiment_name} -> {out_path}")
+        if show_plot:
+            plt.show()
+        else:
+            plt.close()
+
+def create_all_experiments_layer_grid(experiments, save_path="all_experiments_layers.png", show_plot=True):
+    """
+    Create a single figure with a grid of subplots (one per experiment),
+    each showing stacked bars per layer (ablated bottom, retained top).
+    Label retained count on top of a bar if retained < 5% of that layer's total.
+
+    Args:
+        experiments (dict): Mapping experiment_name -> data dict
+        save_path (str): Output image path
+        show_plot (bool): Whether to display the figure
+    """
+    print("\nCreating all-experiments layer grid...")
+
+    # Order experiments by threshold value when available
+    exp_items = []
+    for name, data in experiments.items():
+        thr = data.get('threshold')
+        exp_items.append((name, thr))
+
+    # Sort: experiments with a valid numeric threshold first (ascending),
+    # then experiments without threshold (keep alphabetical by name for determinism)
+    exp_items.sort(key=lambda item: (0, float(item[1])) if isinstance(item[1], (int, float)) else (1, item[0]))
+
+    experiment_names = [name for name, _ in exp_items]
+    num_experiments = len(experiment_names)
+    if num_experiments == 0:
+        print("No experiments to plot.")
+        return
+
+    # Grid size: try to make it roughly square
+    cols = int(np.ceil(np.sqrt(num_experiments)))
+    rows = int(np.ceil(num_experiments / cols))
+
+    fig, axes = plt.subplots(rows, cols, figsize=(6 * cols, 4 * rows), squeeze=False)
+
+    for idx, experiment_name in enumerate(experiment_names):
+        r = idx // cols
+        c = idx % cols
+        ax = axes[r][c]
+
+        data = experiments[experiment_name]
+        layer_stats = defaultdict(lambda: {'ablated': 0, 'retained': 0})
+        for layer, _ in data['ablated_neurons']:
+            layer_stats[layer]['ablated'] += 1
+        for layer, _ in data['cannot_ablate_neurons']:
+            layer_stats[layer]['retained'] += 1
+
+        if not layer_stats:
+            ax.set_title(f"{experiment_name} (no data)")
+            ax.axis('off')
+            continue
+
+        layers = sorted(layer_stats.keys())
+        ablated_counts = [layer_stats[layer]['ablated'] for layer in layers]
+        retained_counts = [layer_stats[layer]['retained'] for layer in layers]
+        totals = [ablated_counts[i] + retained_counts[i] for i in range(len(layers))]
+
+        ax.bar(layers, ablated_counts, label='Ablated', color='skyblue', alpha=0.8)
+        bars_ret = ax.bar(layers, retained_counts, bottom=ablated_counts, label='Retained', color='lightcoral', alpha=0.8)
+
+        for i, bar in enumerate(bars_ret):
+            total = totals[i]
+            retained = retained_counts[i]
+            if total > 0 and (retained / total) < 0.05:
+                x_pos = bar.get_x() + bar.get_width() / 2
+                y_pos = bar.get_y() + bar.get_height()
+                ax.text(x_pos, y_pos, f"{retained}", ha='center', va='bottom', fontsize=7, fontweight='bold')
+
+        threshold_value = data.get('threshold')
+        if isinstance(threshold_value, (int, float)):
+            ax.set_title(f'{threshold_value:.4f}')
+        else:
+            ax.set_title(experiment_name)
+        ax.set_xlabel('Layer')
+        ax.set_ylabel('Neuron Count')
+
+    # Hide any unused subplots
+    for j in range(num_experiments, rows * cols):
+        r = j // cols
+        c = j % cols
+        axes[r][c].axis('off')
+
+    # Create a single legend
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    if handles:
+        fig.legend(handles, labels, loc='upper center', ncol=2)
+
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"All-experiments layer grid saved to: {save_path}")
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig)
 
 def create_topic_statistics_plot(save_path="topic_statistics.png", show_plot=True):
     """
@@ -1005,7 +1183,7 @@ def main():
     parser.add_argument('--visualizations',
                         type=str,
                         nargs='+',
-                        choices=['all', 'heatmap', 'layer_dist', 'similarity', 'ratio_dist', 'best_experiment',
+                        choices=['all', 'heatmap', 'layer_dist', 'similarity', 'ratio_dist', 'best_experiment', 'per_experiment_layers', 'all_experiments_layers',
                                  'threshold_vs_cannot_ablate', 'topic_vs_cannot_ablate', 'topic_stats',
                                  'evaluation_hits_at_1'],
                         default=['all'],
@@ -1052,7 +1230,7 @@ def main():
     if 'all' in args.visualizations:
         visualizations_to_run = ['heatmap', 'layer_dist', 'similarity', 'ratio_dist', 'best_experiment',
                                  'threshold_vs_cannot_ablate', 'topic_vs_cannot_ablate', 'topic_stats',
-                                 'evaluation_hits_at_1']
+                                 'evaluation_hits_at_1', 'per_experiment_layers', 'all_experiments_layers']
     else:
         visualizations_to_run = args.visualizations
 
@@ -1094,6 +1272,14 @@ def main():
     if 'evaluation_hits_at_1' in visualizations_to_run:
         create_evaluation_hits_at_1_plot(experiments, str(visualizations_dir / "evaluation_hits_at_1.png"),
                                          show_plot=not args.no_show)
+
+    if 'per_experiment_layers' in visualizations_to_run:
+        # Save into a dedicated subfolder under visualizations
+        per_exp_dir = visualizations_dir / "per_experiment_layers"
+        create_per_experiment_layer_distribution(experiments, per_exp_dir, show_plot=not args.no_show)
+
+    if 'all_experiments_layers' in visualizations_to_run:
+        create_all_experiments_layer_grid(experiments, str(visualizations_dir / "all_experiments_layers.png"), show_plot=not args.no_show)
 
     print("\nAnalysis complete!")
     print(f"All visualizations have been saved to: {visualizations_dir}")
