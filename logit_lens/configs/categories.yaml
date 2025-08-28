@@ -1,0 +1,36 @@
+# Order matters: first match wins (case-insensitive).
+categories:
+  - name: author
+    include:
+      - '\b(who\s+wrote|author\s+of|written\s+by)\b'
+      - '\bnovel|book|poem|play\b'
+  - name: biography
+    include:
+      - '\bwho\s+is\b'
+      - '\bborn\b|\bdied\b|\bage\b'
+  - name: geography
+    include:
+      - '\b(capital|country|city|state|river|mountain|continent|ocean)\b'
+  - name: history
+    include:
+      - '\bwhat\s+happened\s+in\s+\d{3,4}|when\s+did\b'
+      - '\bwar|revolution|treaty|dynasty|empire\b'
+  - name: science
+    include:
+      - '\bphysics|chemistry|biology|planet|cell|atom|molecule|theory\b'
+  - name: sports
+    include:
+      - '\bwho\s+won|medals|olympics|world\s+cup|nba|nfl|mlb|soccer\b'
+  - name: entertainment
+    include:
+      - '\bfilm|movie|tv|series|actor|actress|director|album|song|singer|band\b'
+  - name: dates_numbers
+    include:
+      - '\b\d{4}\b'         # queries anchored on years
+      - '\bhow many\b'
+  - name: definition
+    include:
+      - '\bwhat\s+is\b|\bmeaning\s+of\b|\bdefine\b'
+  - name: other
+    include:
+      - '.*'                # fallback
