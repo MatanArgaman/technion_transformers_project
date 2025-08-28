@@ -1,0 +1,65 @@
+compute:
+  device: cpu
+  dtype: float32
+exp1:
+  distribution_metrics:
+  - entropy
+  - perplexity
+  - gini
+  - hhi
+  - margin_top1_top2
+  highlight_docids:
+  - 33799
+  save_distribution_stats_csv: true
+  save_scores_pt: false
+  save_topk_csv: true
+exp2:
+  activation_top_percent: 5
+  collect_promoted_docs_topk: 20
+  combination:
+    enabled: true
+    eval_topk:
+    - 1
+    - 5
+    - 10
+    - 20
+    top_neurons_per_query: 5
+    vote_methods:
+    - sum
+    - act_weighted_sum
+    - max
+  min_support: 25
+  specialization_max_entropy: 0.5
+  specialization_metric: entropy
+exp3:
+  cluster: hdbscan
+  embedder: sentence-transformers/all-MiniLM-L6-v2
+  min_cluster_size: 5
+model:
+  hook_name_template: decoder.{layer}.hook_mlp_out
+  layers:
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  use_ln_aware: true
+paths:
+  data_dir: ./data/NQ10k
+  model_dir: ./model
+  out_dir: ./logit_lens/results
+retrieval:
+  docid_vocab_path: ./logit_lens/results/shared/docid_vocab.json
+  eval_topk:
+  - 1
+  - 5
+  - 10
+  - 20
+  thresholds:
+    absolute:
+    - 0.0
+    quantiles:
+    - 0.99
+    - 0.95
+  topk_docs: 20
