@@ -229,7 +229,7 @@ def create_cannot_ablate_heatmap(experiments, save_path="cannot_ablate_heatmap.p
                 xticklabels=100,  # Show every 100th tick
                 yticklabels=layer_labels)  # Show actual layer numbers
 
-    plt.title(f'Cannot Ablate Neurons Heatmap\n(across {len(experiments)} experiments, layers {min_layer}-{max_layer})',
+    plt.title(f'Retained Neurons Heatmap\n(across {len(experiments)} experiments, layers {min_layer}-{max_layer})',
               fontsize=16, fontweight='bold')
     plt.xlabel('Neuron Index', fontsize=12)
     plt.ylabel('Layer', fontsize=12)
@@ -462,7 +462,7 @@ def create_threshold_vs_cannot_ablate_plot(experiments, save_path="threshold_vs_
         save_path (str): Path to save the visualization
         show_plot (bool): If True, show the plot, otherwise just save
     """
-    print("\nCreating threshold vs cannot_ablate neurons plot...")
+    print("\nCreating threshold vs retained neurons plot...")
 
     # Filter experiments that have threshold data
     threshold_experiments = {name: data for name, data in experiments.items() if 'threshold' in data}
@@ -511,8 +511,8 @@ def create_threshold_vs_cannot_ablate_plot(experiments, save_path="threshold_vs_
                      bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
 
     plt.xlabel('Threshold Value')
-    plt.ylabel('Total Cannot Ablate Neurons')
-    plt.title('Threshold vs Cannot Ablate Neurons\n(All experiments with threshold data)')
+    plt.ylabel('Total retained Neurons')
+    plt.title('Threshold vs Retained Neurons\n(All experiments with threshold data)')
     plt.grid(True, alpha=0.3)
 
     # Add statistics
@@ -521,13 +521,13 @@ def create_threshold_vs_cannot_ablate_plot(experiments, save_path="threshold_vs_
     min_cannot_ablate = min(cannot_ablate_counts)
     max_cannot_ablate = max(cannot_ablate_counts)
 
-    stats_text = f'Threshold range: {min_threshold} - {max_threshold}\nCannot ablate range: {min_cannot_ablate} - {max_cannot_ablate}\nTotal experiments: {len(thresholds)}'
+    stats_text = f'Threshold range: {min_threshold} - {max_threshold}\nRetained range: {min_cannot_ablate} - {max_cannot_ablate}\nTotal experiments: {len(thresholds)}'
     plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Threshold vs cannot_ablate plot saved to: {save_path}")
+    print(f"Threshold vs retained plot saved to: {save_path}")
     if show_plot:
         plt.show()
 
@@ -562,23 +562,40 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
 
     # Check if experiments have threshold data
     has_threshold_data = any('threshold' in experiments[name] for name in experiment_names)
-    
+
     if has_threshold_data:
-        # Use threshold values for x-axis labels
+        # Sort experiments by threshold (numeric first ascending), then by name
+        sortable = []
+        for idx, name in enumerate(experiment_names):
+            thr = experiments[name].get('threshold')
+            key = (0, float(thr)) if isinstance(thr, (int, float)) else (1, name)
+            sortable.append((key, idx, name))
+        sortable.sort(key=lambda x: x[0])
+        sorted_indices = [orig_idx for _, orig_idx, _ in sortable]
+        experiment_names = [nm for _, _, nm in sortable]
+        # Reorder similarity matrix to match sorted experiments
+        similarity_matrix = similarity_matrix[np.ix_(sorted_indices, sorted_indices)]
+
+        # Use threshold values for labels (fallback to name if missing)
         x_labels = []
         y_labels = []
         for name in experiment_names:
             threshold = experiments[name].get('threshold')
             if threshold is not None and isinstance(threshold, (int, float)):
-                x_labels.append(f'{threshold:.4f}')
-                y_labels.append(f'{threshold:.4f}')
+                x_labels.append(f'{threshold:.0f}')
+                y_labels.append(f'{threshold:.0f}')
             else:
-                # Fall back to experiment name if no threshold data
                 x_labels.append(name)
                 y_labels.append(name)
         x_axis_label = 'Threshold'
         y_axis_label = 'Threshold'
     else:
+        # Optional: sort by experiment name for determinism
+        sorted_pairs = sorted([(name, i) for i, name in enumerate(experiment_names)], key=lambda t: t[0])
+        sorted_indices = [i for _, i in sorted_pairs]
+        experiment_names = [name for name, _ in sorted_pairs]
+        similarity_matrix = similarity_matrix[np.ix_(sorted_indices, sorted_indices)]
+
         # Create numbered labels for experiments (1, 2, 3, ...)
         x_labels = [str(i + 1) for i in range(len(experiment_names))]
         y_labels = [str(i + 1) for i in range(len(experiment_names))]
@@ -592,7 +609,7 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
                 cmap='coolwarm',
                 cbar_kws={'label': 'Jaccard Similarity'})
 
-    plt.title('Experiment Similarity Matrix\n(Based on cannot_ablate_neurons overlap)')
+    plt.title('Experiment Similarity Matrix\n(Based on retained neurons overlap)')
     plt.xlabel(x_axis_label)
     plt.ylabel(y_axis_label)
     plt.tight_layout()
@@ -629,7 +646,7 @@ def create_ablation_ratio_distribution(experiments, save_path="ablation_ratio_di
     plt.ylabel('Number of Experiments')
     plt.title('Distribution of Ablation Ratios')
     mean_ratio = float(np.mean(ablation_ratios))
-    plt.axvline(mean_ratio, color='red', linestyle='--', label=f'Mean: {mean_ratio:.4f}')
+    plt.axvline(mean_ratio, color='red', linestyle='--', label=f'Mean: {mean_ratio:.0f}')
     plt.legend()
 
     # Box plot
@@ -669,13 +686,13 @@ def print_experiment_statistics(experiments):
 
         print(f"{experiment_name}:")
         print(f"  - Ablated neurons: {ablated_count}")
-        print(f"  - Cannot ablate neurons: {cannot_ablate_count}")
+        print(f"  - Retained neurons: {cannot_ablate_count}")
 
     print(f"\nSUMMARY:")
     print(f"  - Total ablated neurons across all experiments: {total_ablated}")
-    print(f"  - Total cannot ablate neurons across all experiments: {total_cannot_ablate}")
-    print(f"  - Average ablated per experiment: {total_ablated / len(experiments):.1f}")
-    print(f"  - Average cannot ablate per experiment: {total_cannot_ablate / len(experiments):.1f}")
+    print(f"  - Total retained neurons across all experiments: {total_cannot_ablate}")
+    print(f"  - Average ablated per experiment: {total_ablated / len(experiments):.0f}")
+    print(f"  - Average retained per experiment: {total_cannot_ablate / len(experiments):.0f}")
 
 
 def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_ablate.png", show_plot=True):
@@ -751,8 +768,8 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
                      bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.7))
 
     plt.xlabel('Topic')
-    plt.ylabel('Total Cannot Ablate Neurons')
-    plt.title('Topic vs Cannot Ablate Neurons\n(All topic-based experiments)')
+    plt.ylabel('Total Retained Neurons')
+    plt.title('Topic vs Retained Neurons\n(All topic-based experiments)')
     plt.grid(True, alpha=0.3)
 
     # Set x-axis labels to topic names
@@ -764,7 +781,7 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
     max_cannot_ablate = max(cannot_ablate_counts)
     avg_cannot_ablate = np.mean(cannot_ablate_counts)
 
-    stats_text = f'Cannot ablate range: {min_cannot_ablate} - {max_cannot_ablate}\nAverage: {avg_cannot_ablate:.1f}\nTotal experiments: {len(cannot_ablate_counts)}'
+    stats_text = f'Retained range: {min_cannot_ablate} - {max_cannot_ablate}\nAverage: {avg_cannot_ablate:.0f}\nTotal experiments: {len(cannot_ablate_counts)}'
     plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
@@ -864,7 +881,7 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     # Set x-axis labels based on data type
     if has_threshold_data:
         # Use threshold values as x-axis labels
-        plt.xticks(x, [f'{val:.4f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
+        plt.xticks(x, [f'{val:.0f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
                    ha='right')
     else:
         # Use topic names from topic.json directly when available
@@ -876,10 +893,10 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     # Add value labels on bars
     for i, (v_val, t_val) in enumerate(zip(v_eval_values, t_eval_values)):
         if v_val is not None:
-            plt.text(i - width / 2, v_val + 0.01, f'{v_val:.4f}',
+            plt.text(i - width / 2, v_val + 0.01, f'{v_val:.3f}',
                      ha='center', va='bottom', fontsize=8)
         if t_val is not None:
-            plt.text(i + width / 2, t_val + 0.01, f'{t_val:.4f}',
+            plt.text(i + width / 2, t_val + 0.01, f'{t_val:.3f}',
                      ha='center', va='bottom', fontsize=8)
 
     # Add statistics
@@ -900,7 +917,7 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     else:
         t_avg = t_min = t_max = 0
 
-    stats_text = f'Validation - Avg: {v_avg:.4f}, Min: {v_min:.4f}, Max: {v_max:.4f}\nTest - Avg: {t_avg:.4f}, Min: {t_min:.4f}, Max: {t_max:.4f}\nTotal experiments: {len(experiment_names)}'
+    stats_text = f'Validation - Avg: {v_avg:.0f}, Min: {v_min:.0f}, Max: {v_max:.0f}\nTest - Avg: {t_avg:.0f}, Min: {t_min:.0f}, Max: {t_max:.0f}\nTotal experiments: {len(experiment_names)}'
     plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
@@ -963,7 +980,7 @@ def create_per_experiment_layer_distribution(experiments, save_dir, show_plot=Tr
         # Title uses threshold value if available, else experiment name
         threshold_value = data.get('threshold')
         if isinstance(threshold_value, (int, float)):
-            title_text = f'{threshold_value:.4f}'
+            title_text = f'{threshold_value:.0f}'
         else:
             title_text = experiment_name
         plt.title(f'Layer-wise Retained vs Ablated Neurons\nExperiment: {title_text}')
@@ -1048,7 +1065,7 @@ def create_all_experiments_layer_grid(experiments, save_path="all_experiments_la
 
         threshold_value = data.get('threshold')
         if isinstance(threshold_value, (int, float)):
-            ax.set_title(f'{threshold_value:.4f}')
+            ax.set_title(f'{threshold_value:.0f}')
         else:
             ax.set_title(experiment_name)
         ax.set_xlabel('Layer')
