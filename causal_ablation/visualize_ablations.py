@@ -16,7 +16,7 @@ def load_experiment_data(experiment_folder):
         experiment_folder (str): Path to the experiment folder
 
     Returns:
-        dict: Dictionary containing the three JSON files' data, threshold if available, and evaluation data if available
+        dict: Dictionary containing the three JSON files' data, threshold if available, evaluation data if available, and topic data if available
     """
     experiment_path = Path(experiment_folder)
 
@@ -42,6 +42,14 @@ def load_experiment_data(experiment_folder):
         with open(threshold_file, 'r') as f:
             threshold_data = json.load(f)
             result['threshold'] = threshold_data.get('threshold')
+
+    # Load topic.json if it exists
+    topic_file = experiment_path / "topic.json"
+    if topic_file.exists():
+        with open(topic_file, 'r') as f:
+            topic_data = json.load(f)
+            result['topic_id'] = topic_data.get('topic_id')
+            result['topic_name'] = topic_data.get('topic_name')
 
     # Load evaluation files if they exist
     v_eval_file = experiment_path / "v_eval.json"
@@ -560,8 +568,9 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
                 union = len(cannot_ablate_1.union(cannot_ablate_2))
                 similarity_matrix[i, j] = intersection / union if union > 0 else 0
 
-    # Check if experiments have threshold data
+    # Check if experiments have threshold data or topic data
     has_threshold_data = any('threshold' in experiments[name] for name in experiment_names)
+    has_topic_data = any('topic_name' in experiments[name] for name in experiment_names)
 
     if has_threshold_data:
         # Sort experiments by threshold (numeric first ascending), then by name
@@ -589,6 +598,28 @@ def create_experiment_similarity_matrix(experiments, save_path="experiment_simil
                 y_labels.append(name)
         x_axis_label = 'Threshold'
         y_axis_label = 'Threshold'
+    elif has_topic_data:
+        # Sort experiments by topic name for determinism
+        sorted_pairs = sorted([(name, i) for i, name in enumerate(experiment_names)], key=lambda t: experiments[t[0]].get('topic_name', ''))
+        sorted_indices = [i for _, i in sorted_pairs]
+        experiment_names = [name for name, _ in sorted_pairs]
+        similarity_matrix = similarity_matrix[np.ix_(sorted_indices, sorted_indices)]
+
+        # Use topic names for labels (clean up for display)
+        x_labels = []
+        y_labels = []
+        for name in experiment_names:
+            topic_name = experiments[name].get('topic_name', name)
+            if isinstance(topic_name, str) and '_' in topic_name:
+                # Extract the descriptive part after the first underscore
+                clean_name = topic_name.split('_', 1)[1]
+                x_labels.append(clean_name)
+                y_labels.append(clean_name)
+            else:
+                x_labels.append(str(topic_name))
+                y_labels.append(str(topic_name))
+        x_axis_label = 'Topic'
+        y_axis_label = 'Topic'
     else:
         # Optional: sort by experiment name for determinism
         sorted_pairs = sorted([(name, i) for i, name in enumerate(experiment_names)], key=lambda t: t[0])
@@ -695,23 +726,23 @@ def print_experiment_statistics(experiments):
     print(f"  - Average retained per experiment: {total_cannot_ablate / len(experiments):.0f}")
 
 
-def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_ablate.png", show_plot=True):
+def create_topic_vs_retained_plot(experiments, save_path="topic_vs_retained.png", show_plot=True):
     """
-    Create a scatter plot showing the relationship between topic names and total cannot_ablate neurons.
-    Only works for topic-based experiments (experiments starting with 't_').
+    Create a scatter plot showing the relationship between topic names and total retained neurons.
+    Only works for experiments that have topic data loaded.
 
     Args:
         experiments (dict): Dictionary of experiment data
         save_path (str): Path to save the visualization
         show_plot (bool): If True, show the plot, otherwise just save
     """
-    print("\nCreating topic vs cannot_ablate neurons plot...")
+    print("\nCreating topic vs retained neurons plot...")
 
-    # Filter experiments that have topic data (start with 't_')
-    topic_experiments = {name: data for name, data in experiments.items() if name.startswith('t_')}
+    # Filter experiments that have topic data loaded
+    topic_experiments = {name: data for name, data in experiments.items() if 'topic_name' in data and 'topic_id' in data}
 
     if not topic_experiments:
-        print("No topic-based experiments found!")
+        print("No experiments with topic data found!")
         return
 
     # Extract topic information and cannot_ablate counts
@@ -721,22 +752,14 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
     experiment_names = []
 
     for experiment_name, data in topic_experiments.items():
-        # Load topic.json file for this experiment
-        experiment_path = Path(f"ablation_results/topics/{experiment_name}")
-        topic_file = experiment_path / "topic.json"
+        topic_name = data['topic_name']
+        topic_id = data['topic_id']
+        cannot_ablate_count = len(data['cannot_ablate_neurons'])
 
-        if topic_file.exists():
-            with open(topic_file, 'r') as f:
-                topic_data = json.load(f)
-                topic_name = topic_data.get('topic_name', f'Unknown_{experiment_name}')
-                topic_id = topic_data.get('topic_id', -1)
-
-                cannot_ablate_count = len(data['cannot_ablate_neurons'])
-
-                topic_names.append(topic_name)
-                topic_ids.append(topic_id)
-                cannot_ablate_counts.append(cannot_ablate_count)
-                experiment_names.append(experiment_name)
+        topic_names.append(topic_name)
+        topic_ids.append(topic_id)
+        cannot_ablate_counts.append(cannot_ablate_count)
+        experiment_names.append(experiment_name)
 
     if not topic_names:
         print("No valid topic data found!")
@@ -787,7 +810,7 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"Topic vs cannot_ablate plot saved to: {save_path}")
+    print(f"Topic vs retained plot saved to: {save_path}")
     if show_plot:
         plt.show()
 
@@ -822,9 +845,8 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     # Track if we need sequential numbering
     need_sequential_numbering = False
     if not has_threshold_data:
-        # Check if any experiments have topic.json files
-        current_dir = Path.cwd()
-        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in all_experiments.keys())
+        # Check if any experiments have topic data loaded
+        has_topic_data = any('topic_name' in data for data in all_experiments.values())
         need_sequential_numbering = not has_topic_data
         print(f"Need sequential numbering: {need_sequential_numbering}")
     
@@ -837,23 +859,12 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
             x_value = data['threshold']
             x_values.append(x_value)
         else:
-            # Check if topic.json file exists for this experiment in the topics directory
-            current_dir = Path.cwd()
-            topic_file = current_dir / "results" / "topics" / experiment_name / "topic.json"
-            
-            if topic_file.exists():
-                try:
-                    with open(topic_file, 'r') as f:
-                        topic_data = json.load(f)
-                        topic_name = topic_data.get('topic_name', f'Unknown_{experiment_name}')
-                    x_values.append(topic_name)
-                except Exception as e:
-                    print(f"Error reading topic file for {experiment_name}: {e}")
-                    # Fall back to sequential numbering
-                    x_values.append(exp_counter)
-                    exp_counter += 1
+            # Check if topic data is loaded for this experiment
+            if 'topic_name' in data:
+                topic_name = data['topic_name']
+                x_values.append(topic_name)
             else:
-                # If no topic.json exists and no threshold data, use sequential numbering
+                # If no topic data loaded and no threshold data, use sequential numbering
                 if need_sequential_numbering:
                     print(f"Using sequential numbering for {experiment_name}: {exp_counter}")
                     x_values.append(exp_counter)
@@ -916,10 +927,8 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
         x_axis_label = 'Threshold'
         title_suffix = 'by Threshold'
     else:
-        # Check if we have topic data or experiment numbers
-        current_dir = Path.cwd()
-        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in experiment_names)
-        print(f"Current directory: {current_dir}")
+        # Check if we have topic data loaded or experiment numbers
+        has_topic_data = any('topic_name' in all_experiments[exp] for exp in experiment_names)
         print(f"Has topic data: {has_topic_data}")
         if has_topic_data:
             x_axis_label = 'Topic'
@@ -938,12 +947,20 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
         plt.xticks(x, [f'{val:.0f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=0,
                    ha='center')
     else:
-        # Check if we have topic data or experiment numbers
-        current_dir = Path.cwd()
-        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in experiment_names)
+        # Check if we have topic data loaded or experiment numbers
+        has_topic_data = any('topic_name' in all_experiments[exp] for exp in experiment_names)
         if has_topic_data:
-            # Use topic names from topic.json directly when available
-            plt.xticks(x, x_values, rotation=0, ha='center')
+            # Use topic names from loaded data when available
+            # Clean up topic names for better display (remove prefix numbers)
+            clean_topic_names = []
+            for val in x_values:
+                if isinstance(val, str) and '_' in val:
+                    # Extract the descriptive part after the first underscore
+                    clean_name = val.split('_', 1)[1]
+                    clean_topic_names.append(clean_name)
+                else:
+                    clean_topic_names.append(str(val))
+            plt.xticks(x, clean_topic_names, rotation=45, ha='right')
         else:
             # Use sequential experiment numbers as x-axis labels
             plt.xticks(x, x_values, rotation=0, ha='center')
@@ -1264,13 +1281,13 @@ def main():
     parser = argparse.ArgumentParser(description='Visualize ablation experiment results')
     parser.add_argument('--experiments_path',
                         type=str,
-                        default=r'C:\projects\transformers\236004-HW1-GPT\ablation_results',
-                        help='Path to the folder containing experiment folders (default: C:\\projects\\transformers\\236004-HW1-GPT\\ablation_results)')
+                        default='results',
+                        help='Path to the folder containing experiment folders (default: results)')
     parser.add_argument('--visualizations',
                         type=str,
                         nargs='+',
                         choices=['all', 'heatmap', 'layer_dist', 'similarity', 'ratio_dist', 'best_experiment', 'per_experiment_layers', 'all_experiments_layers',
-                                 'threshold_vs_cannot_ablate', 'topic_vs_cannot_ablate', 'topic_stats',
+                                 'threshold_vs_cannot_ablate', 'topic_vs_retained', 'topic_stats',
                                  'evaluation_hits_at_1'],
                         default=['all'],
                         help='Which visualizations to create (default: all)')
@@ -1315,7 +1332,7 @@ def main():
     # Determine which visualizations to run
     if 'all' in args.visualizations:
         visualizations_to_run = ['heatmap', 'layer_dist', 'similarity', 'ratio_dist', 'best_experiment',
-                                 'threshold_vs_cannot_ablate', 'topic_vs_cannot_ablate', 'topic_stats',
+                                 'threshold_vs_cannot_ablate', 'topic_vs_retained', 'topic_stats',
                                  'evaluation_hits_at_1', 'per_experiment_layers', 'all_experiments_layers']
     else:
         visualizations_to_run = args.visualizations
@@ -1348,8 +1365,8 @@ def main():
         create_threshold_vs_cannot_ablate_plot(experiments, str(visualizations_dir / "threshold_vs_cannot_ablate.png"),
                                                show_plot=not args.no_show)
 
-    if 'topic_vs_cannot_ablate' in visualizations_to_run:
-        create_topic_vs_cannot_ablate_plot(experiments, str(visualizations_dir / "topic_vs_cannot_ablate.png"),
+    if 'topic_vs_retained' in visualizations_to_run:
+        create_topic_vs_retained_plot(experiments, str(visualizations_dir / "topic_vs_retained.png"),
                                            show_plot=not args.no_show)
 
     if 'topic_stats' in visualizations_to_run:
