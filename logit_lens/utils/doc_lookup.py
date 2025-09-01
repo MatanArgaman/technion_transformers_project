@@ -100,7 +100,7 @@ def build_doc_index(model_dir: str, data_dir: str) -> Dict[int, Dict[str, Any]]:
     It first tries to find an explicit '@DOC_ID_...@' token in each record; if absent,
     it looks for a numeric doc id and converts it to the token string.
     """
-    tok = AutoTokenizer.from_pretrained(model_dir, local_files_only=True, use_fast=True)
+    tok = AutoTokenizer.from_pretrained(os.path.abspath(model_dir), local_files_only=True, use_fast=True)
     path = _find_documents_path(data_dir)
     if path is None:
         raise FileNotFoundError(f"Could not find documents-*.json under {data_dir}")
