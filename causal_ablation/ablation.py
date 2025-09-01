@@ -405,7 +405,7 @@ if __name__ == "__main__":
         else:
             # Activation-based ablation logic
             bools = activation_bools[layer]  # shape: (num_queries, num_neurons)
-            active_queries = set(np.where(bools[:, neuron_idx])[0])
+            active_queries = set(np.where(bools[:, neuron_idx])[0]) # this is empty after the ablation so the method could be sped up by just working on the original model, no need to do neuron by neuron ablation.
             if active_queries == neuron_query_activations[neuron]:
                 print(f"Neuron {neuron} can be ablated (activation pattern unchanged)")
             else:
