@@ -256,7 +256,7 @@ def create_layer_ablation_distribution(experiments, save_path="layer_ablation_di
     Combines both neuron count and percentage in a single graph using dual y-axes.
 
     Args:
-        experiments (dict): Dictionary of experiment data
+        experiments (dict): Dictionary of experiment data0
         save_path (str): Path to save the visualization
         show_plot (bool): If True, show the plot, otherwise just save
     """
@@ -795,6 +795,7 @@ def create_topic_vs_cannot_ablate_plot(experiments, save_path="topic_vs_cannot_a
 def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_1.png", show_plot=True):
     """
     Create a bar chart showing hits_at_1 values from v_eval.json and t_eval.json files for each experiment.
+    If evaluation data is missing, shows "N/A" and uses experiment numbers on the x-axis.
 
     Args:
         experiments (dict): Dictionary of experiment data
@@ -803,49 +804,84 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     """
     print("\nCreating evaluation hits_at_1 plot...")
 
-    # Filter experiments that have evaluation data
-    eval_experiments = {}
-    for name, data in experiments.items():
-        if 'v_eval' in data or 't_eval' in data:
-            eval_experiments[name] = data
-
-    if not eval_experiments:
-        print("No experiments with evaluation data found!")
+    # Include all experiments, not just those with evaluation data
+    all_experiments = experiments
+    if not all_experiments:
+        print("No experiments found!")
         return
 
     # Check if any experiments have threshold data
-    has_threshold_data = any('threshold' in data for data in eval_experiments.values())
+    has_threshold_data = any('threshold' in data for data in all_experiments.values())
 
     # Extract data for plotting
     experiment_names = []
     x_values = []
     v_eval_values = []
     t_eval_values = []
+    
+    # Track if we need sequential numbering
+    need_sequential_numbering = False
+    if not has_threshold_data:
+        # Check if any experiments have topic.json files
+        current_dir = Path.cwd()
+        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in all_experiments.keys())
+        need_sequential_numbering = not has_topic_data
+        print(f"Need sequential numbering: {need_sequential_numbering}")
+    
+    # Counter for sequential numbering
+    exp_counter = 1
 
-    for experiment_name, data in eval_experiments.items():
+    for experiment_name, data in all_experiments.items():
         if has_threshold_data and 'threshold' in data:
             # Use threshold value as x-axis value
             x_value = data['threshold']
             x_values.append(x_value)
         else:
-            # Load topic.json file for this experiment
-            experiment_path = Path(f"ablation_results/topics/{experiment_name}")
-            topic_file = experiment_path / "topic.json"
-
+            # Check if topic.json file exists for this experiment in the topics directory
+            current_dir = Path.cwd()
+            topic_file = current_dir / "results" / "topics" / experiment_name / "topic.json"
+            
             if topic_file.exists():
-                with open(topic_file, 'r') as f:
-                    topic_data = json.load(f)
-                    topic_name = topic_data.get('topic_name', f'Unknown_{experiment_name}')
+                try:
+                    with open(topic_file, 'r') as f:
+                        topic_data = json.load(f)
+                        topic_name = topic_data.get('topic_name', f'Unknown_{experiment_name}')
+                    x_values.append(topic_name)
+                except Exception as e:
+                    print(f"Error reading topic file for {experiment_name}: {e}")
+                    # Fall back to sequential numbering
+                    x_values.append(exp_counter)
+                    exp_counter += 1
             else:
-                topic_name = f'Unknown_{experiment_name}'
-            x_values.append(topic_name)
+                # If no topic.json exists and no threshold data, use sequential numbering
+                if need_sequential_numbering:
+                    print(f"Using sequential numbering for {experiment_name}: {exp_counter}")
+                    x_values.append(exp_counter)
+                    exp_counter += 1
+                else:
+                    # Fallback: extract numeric part from experiment name
+                    if '_' in experiment_name:
+                        exp_number = experiment_name.split('_', 1)[1]
+                    else:
+                        exp_number = experiment_name
+                    x_values.append(exp_number)
 
         experiment_names.append(experiment_name)
-        flip_sets = False
-        if experiment_name.startswith('t_'):
-            flip_sets = True
-        v_eval_values.append(data.get('t_eval' if flip_sets else 'v_eval', None))
-        t_eval_values.append(data.get('v_eval' if flip_sets else 't_eval', None))
+        
+        # Get eval values, defaulting to None if not available
+        # Restore original behavior: flip sets for experiments starting with 't_'
+        flip_sets = experiment_name.startswith('t_')
+        v_eval_val = data.get('t_eval' if flip_sets else 'v_eval', None)
+        t_eval_val = data.get('v_eval' if flip_sets else 't_eval', None)
+        
+        v_eval_values.append(v_eval_val)
+        t_eval_values.append(t_eval_val)
+
+    # Debug output to see what x-axis values we're using
+    print(f"X-axis values: {x_values}")
+    print(f"Experiment names: {experiment_names}")
+    print(f"Validation values: {v_eval_values}")
+    print(f"Test values: {t_eval_values}")
 
     # Create the bar chart
     plt.figure(figsize=(16, 10))
@@ -866,42 +902,75 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
         x = np.arange(len(experiment_names))
 
     # Create bars for validation and test data
-    t_bars = plt.bar(x - width / 2, [val if val is not None else 0 for val in t_eval_values],
+    # Handle None values by setting them to 0 for visualization
+    t_eval_plot_values = [val if val is not None else 0 for val in t_eval_values]
+    v_eval_plot_values = [val if val is not None else 0 for val in v_eval_values]
+    
+    t_bars = plt.bar(x - width / 2, t_eval_plot_values,
                      width, label='Test', color='blue', alpha=0.7)
-    v_bars = plt.bar(x + width / 2, [val if val is not None else 0 for val in v_eval_values],
+    v_bars = plt.bar(x + width / 2, v_eval_plot_values,
                      width, label='Validation', color='red', alpha=0.7)
 
     # Customize the plot
-    x_axis_label = 'Threshold' if has_threshold_data else 'Topic'
+    if has_threshold_data:
+        x_axis_label = 'Threshold'
+        title_suffix = 'by Threshold'
+    else:
+        # Check if we have topic data or experiment numbers
+        current_dir = Path.cwd()
+        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in experiment_names)
+        print(f"Current directory: {current_dir}")
+        print(f"Has topic data: {has_topic_data}")
+        if has_topic_data:
+            x_axis_label = 'Topic'
+            title_suffix = 'by Topic'
+        else:
+            x_axis_label = 'Experiment Number'
+            title_suffix = 'Experiment # (Sequential)'
+    
     plt.xlabel(x_axis_label)
     plt.ylabel('Hits@1 Score')
-    title_suffix = 'by Threshold' if has_threshold_data else 'by Topic'
     plt.title(f'Evaluation Hits@1 Scores {title_suffix}')
 
     # Set x-axis labels based on data type
     if has_threshold_data:
         # Use threshold values as x-axis labels
-        plt.xticks(x, [f'{val:.0f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=45,
-                   ha='right')
+        plt.xticks(x, [f'{val:.0f}' if isinstance(val, (int, float)) else str(val) for val in x_values], rotation=0,
+                   ha='center')
     else:
-        # Use topic names from topic.json directly when available
-        plt.xticks(x, x_values, rotation=45, ha='right')
+        # Check if we have topic data or experiment numbers
+        current_dir = Path.cwd()
+        has_topic_data = any((current_dir / "results" / "topics" / exp / "topic.json").exists() for exp in experiment_names)
+        if has_topic_data:
+            # Use topic names from topic.json directly when available
+            plt.xticks(x, x_values, rotation=0, ha='center')
+        else:
+            # Use sequential experiment numbers as x-axis labels
+            plt.xticks(x, x_values, rotation=0, ha='center')
 
     plt.legend()
     plt.grid(True, alpha=0.3)
 
-    # Add value labels on bars
-    for i, (v_val, t_val) in enumerate(zip(v_eval_values, t_eval_values)):
-        if v_val is not None:
-            plt.text(i - width / 2, v_val + 0.01, f'{v_val:.3f}',
+    # Add value labels on bars using the actual bar heights
+    for i in range(len(experiment_names)):
+        # Left bar = Test
+        test_height = t_eval_plot_values[i]
+        if test_height > 0:
+            plt.text(i - width / 2, test_height + 0.01, f'{test_height:.3f}',
                      ha='center', va='bottom', fontsize=8)
-        if t_val is not None:
-            plt.text(i + width / 2, t_val + 0.01, f'{t_val:.3f}',
+        # Right bar = Validation
+        val_height = v_eval_plot_values[i]
+        if val_height > 0:
+            plt.text(i + width / 2, val_height + 0.01, f'{val_height:.3f}',
                      ha='center', va='bottom', fontsize=8)
 
     # Add statistics
     v_vals = [val for val in v_eval_values if val is not None]
     t_vals = [val for val in t_eval_values if val is not None]
+    
+    # Count experiments with missing data
+    missing_v_count = sum(1 for val in v_eval_values if val is None)
+    missing_t_count = sum(1 for val in t_eval_values if val is None)
 
     if v_vals:
         v_avg = np.mean(v_vals)
@@ -917,7 +986,7 @@ def create_evaluation_hits_at_1_plot(experiments, save_path="evaluation_hits_at_
     else:
         t_avg = t_min = t_max = 0
 
-    stats_text = f'Validation - Avg: {v_avg:.0f}, Min: {v_min:.0f}, Max: {v_max:.0f}\nTest - Avg: {t_avg:.0f}, Min: {t_min:.0f}, Max: {t_max:.0f}\nTotal experiments: {len(experiment_names)}'
+    stats_text = f'Validation - Avg: {v_avg:.3f}, Min: {v_min:.3f}, Max: {v_max:.3f} (Missing: {missing_v_count})\nTest - Avg: {t_avg:.3f}, Min: {t_min:.3f}, Max: {t_max:.3f} (Missing: {missing_t_count})\nTotal experiments: {len(experiment_names)}'
     plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes,
              verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
 
