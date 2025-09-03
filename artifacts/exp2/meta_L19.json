@@ -1,0 +1,19 @@
+{
+  "layer": 19,
+  "num_queries": 1000,
+  "fire_policy": "topk",
+  "top_p": 0.05,
+  "zthr": 2.5,
+  "categories": [
+    "other",
+    "entertainment",
+    "definition",
+    "history",
+    "sports",
+    "dates_numbers",
+    "biography",
+    "geography",
+    "science",
+    "author"
+  ]
+}

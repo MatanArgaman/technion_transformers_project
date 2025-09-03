@@ -1,0 +1,20 @@
+
+# local data/model caches
+/data/
+/model/
+/logs/
+*.pt
+*.bin
+*.safetensors
+*.zip
+
+# logs & temp
+logs/
+nohup.out
+
+# heavy results — keep only summarized artifacts
+logit_lens/results/
+!logit_lens/results/shared/        # allow small shared vocab files if any
+
+# but we will store curated tables in artifacts/
+artifacts/*.tar.gz
